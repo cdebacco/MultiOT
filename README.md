@@ -13,12 +13,12 @@ The paper can be found [here](https://arxiv.org/abs/) (_preprint_).
 
 Copyright (c) 2021 [Abdullahi Adinoyi Ibrahim](https://github.com/aadinoyiibrahim), [Alessandro Lonardi](https://github.com/aleable) and [Caterina De Bacco](http://cdebacco.com).
 
-## How to use this code
-Example usage is inside the notebook `./src/usage_example_synthetic_network.ipynb `.  
-
 <p align="center">
 <img src ="./images/example.png"><br>
 </p>
+
+## How to use this code
+Example usage is inside the notebook `./src/usage_example_synthetic_network.ipynb `.  
 
 The main code implementing the dynamics is `./src/dynamics.py`.
 

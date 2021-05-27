@@ -14,7 +14,9 @@ The paper can be found [here](https://arxiv.org/abs/) (_preprint_).
 Copyright (c) 2021 [Abdullahi Adinoyi Ibrahim](https://github.com/aadinoyiibrahim), [Alessandro Lonardi](https://github.com/aleable) and [Caterina De Bacco](http://cdebacco.com).
 
 ## How to use this code
-Example usage is inside the notebook `src/usage_example_synthetic_network.ipynb `. 
+Example usage is inside the notebook `./src/usage_example_synthetic_network.ipynb `.  
+
+The main code implementing the dynamics is `./src/dynamics.py`.
 
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:

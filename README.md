@@ -16,6 +16,10 @@ Copyright (c) 2021 [Abdullahi Adinoyi Ibrahim](https://github.com/aadinoyiibrahi
 ## How to use this code
 Example usage is inside the notebook `./src/usage_example_synthetic_network.ipynb `.  
 
+<p align="center">
+<img src ="./images/example.png"><br>
+</p>
+
 The main code implementing the dynamics is `./src/dynamics.py`.
 
 

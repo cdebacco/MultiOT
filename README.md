@@ -9,7 +9,7 @@ This is a an algorithm that uses optimal transport theory to find optimal path t
 
 If you use this code please cite [1].   
 
-The paper can be found [here](https://arxiv.org/abs/) (_preprint_).  
+The paper can be found [here](https://arxiv.org/abs/2106.07202) (_preprint_).  
 
 Copyright (c) 2021 [Abdullahi Adinoyi Ibrahim](https://github.com/aadinoyiibrahim), [Alessandro Lonardi](https://github.com/aleable) and [Caterina De Bacco](http://cdebacco.com).
 

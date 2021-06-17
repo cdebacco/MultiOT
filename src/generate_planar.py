@@ -1,14 +1,14 @@
 from libpysal import weights, examples
 from libpysal.cg import voronoi_frames
-import geopandas
+#import geopandas
 import networkx as nx
 import numpy as np
 from itertools import combinations
-from math import  sqrt
+#from math import  sqrt
 import random
 
 def planar_graph(nnode, G0 = None, subN = None, L_max=None, L_min = None, domain=(0, 0, 1, 1), metric=None, seed=10, connected_component=True):
-    r"""Returns a planar random graph modified so that only egdes within a distance are possible
+    """Returns a planar random graph modified so that only egdes within a distance are possible
 
     """
 

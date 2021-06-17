@@ -18,6 +18,20 @@ Copyright (c) 2021 [Abdullahi Adinoyi Ibrahim](https://github.com/aadinoyiibrahi
 </p>
 
 ## How to use this code
+
+### Requirements
+
+All the dependencies needed to run the algorithms can be installed using ```setup.py```, in a pre-built ```conda``` environment. <br/>
+In particular, this script needs to be executed as:
+
+```bash
+python setup.py -linux False
+```
+
+You are ready to use our code!
+
+### Usage example
+
 Example usage is inside the notebook `./src/usage_example_synthetic_network.ipynb `.  
 
 The main code implementing the dynamics is `./src/dynamics.py`.

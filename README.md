@@ -25,7 +25,7 @@ All the dependencies needed to run the algorithms can be installed using ```setu
 In particular, this script needs to be executed as:
 
 ```bash
-python setup.py -linux False
+python setup.py
 ```
 
 You are ready to use our code!
@@ -36,6 +36,7 @@ Example usage is inside the notebook `./src/usage_example_synthetic_network.ipyn
 
 The main code implementing the dynamics is `./src/dynamics.py`.
 
+## License
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
 

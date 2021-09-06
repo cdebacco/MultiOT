@@ -3,7 +3,7 @@ Optimal transport on Multilayer networks
 
 Python implementation of the MultiOT algorithm described in:
 
-- [1] Ibrahim, A.A.; Lonardi, A.; De Bacco, C. (2021). *Optimal transport in multilayer networks*.  
+- [1] Ibrahim, A.A.; Lonardi, A.; De Bacco, C. *Optimal transport in multilayer networks*. Algorithms 2021, 14(7), 189 (2021).
 
 This is a an algorithm that uses optimal transport theory to find optimal path trajectories in multilayer networks. 
 

@@ -108,16 +108,16 @@ def plot_results(G,H,graph,opttdens, optpot, optflux,length, flag_trim = False, 
     ax = axes.flatten()
 
     edges = G.edges()
-    colors = 'b' #nx.get_edge_attributes(G,'color')
+    colors = 'grey' #nx.get_edge_attributes(G,'color')
     pos = nx.get_node_attributes(G,'pos')
-    nx.draw(G,pos, with_labels=wl,node_size = ns,  font_weight="bold",ax=ax[0])
+    nx.draw(G,pos, with_labels=wl,node_size = ns, node_color = 'b', font_weight="bold",ax=ax[0])
 #     ax[0].set_axis_off()
     # fig, ax = plt.subplots(1, 1, figsize=figsize)
 
     edges = H.edges()
     colors = 'r' #[H[u][v]['color'] for u,v in edges]
     pos = nx.get_node_attributes(H,'pos')
-    nx.draw(H, pos, with_labels=wl, node_size = ns, edge_color=colors, font_weight="bold", node_color='grey',ax=ax[1])
+    nx.draw(H, pos, with_labels=wl, node_size = ns, edge_color=colors, font_weight="bold", node_color='red',ax=ax[1])
     #     ax[1].set_axis_off()
     ax[1].set_xlim([1.*x for x in ax[0].get_xlim()])
     ax[1].set_ylim([1.*y for y in ax[0].get_ylim()])

@@ -12,5 +12,5 @@ packages = ["jupyterlab",
 for st_ in packages:
 	os.system("pip install "+st_)
 
-os.system("python -m pip install -U --pre shapely")
+os.system("python3 -m pip install -U --pre shapely")
 os.system("pip install geopandas")

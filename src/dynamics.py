@@ -1,335 +1,354 @@
+# -*- coding: utf-8 -*-
+"""
+MultiOT - Optimal Transport in Multilayer networks (https://github.com/cdebacco/MultiOT)
+
+Licensed under the GNU General Public License v3.0
+
+Note: docstrings have been generated semi-automatically
 """
 
-Optimal Transport in Multilayer network
-
-Python implementation of the MultiOT algorithm described in:
-
-- [1] Ibrahim, A.A.; Lonardi, A.; De Bacco, C. (2021). *Optimal transport in multilayer networks*.  
-
-This is a an algorithm that uses optimal transport theory to find optimal path trajectories in multilayer networks. 
-
-If you use this code please cite [1].   
-
-Copyright (c) 2021 Abdullahi Adinoyi Ibrahim, Alessandro Lonardi and Caterina De Bacco
-
-"""
-
-#######################################
-# PACKAGES
-#######################################
-
-import pickle,time, warnings
-import numpy as np
 import networkx as nx
-import random
-import copy
-import math
-import scipy as sp
-
-from scipy.sparse import csr_matrix,lil_matrix,issparse,csc_matrix
-from scipy.sparse import diags
-from scipy.sparse import identity
+import numpy as np
+from scipy.sparse import csr_matrix, diags, identity
 from scipy.sparse.linalg import spsolve
-from scipy import sparse
 
-import matplotlib.pyplot as plt
-from matplotlib.ticker import MaxNLocator
-#######################################
-
-warnings.filterwarnings("ignore", message="Matrix is exactly singular")
-
-def tdensinit(nedge, seed=10):
-    """initialization of the conductivities: mu_e ~ U(0,1)"""
-    prng = np.random.RandomState(seed = seed)
-
-    tdens_0 = prng.uniform(0, 1,size = nedge)
-  
-    weight = np.ones(nedge) + 0.01 * prng.uniform(0, 1, size = nedge)
-    
-    return tdens_0, weight
-
-def dyn(g,  nodes,pflux, nedge, length, forcing0, tol_var_tdens, comm_list, seed=10,verbose=False, N_real = 1, plot_cost = False):
-    """dynamics method"""
-
-    print("\ndynamics...")
-
-    relax_linsys = 1.0e-5       # relaxation for stiffness matrix
-    tot_time = 1000            # upper bound on number of time steps
-    time_step = 0.5             # delta_t (reduce as beta gets close to 2)
-    threshold_cost = 1.0e-6   # threshold for stopping criteria using cost
-    prng = np.random.RandomState(seed=seed) # only needed if spsolve has problems (inside update)
-
-    nnode = len(nodes)
-    ncomm = forcing0.shape[0]
-    forcing = forcing0.transpose()
-
-    minCost = 1e14
-    minCost_list = []
-
-    inc_mat = csr_matrix(nx.incidence_matrix(g, nodelist=nodes, oriented=True)) # B    
-    inc_transpose = csr_matrix(inc_mat.transpose())      # B^T
-    inv_len_mat = diags( 1 / length, 0)     # diag[1/l_e]
-
-    for r in range(N_real):
-
-        tdens_0, weight = tdensinit(nedge,seed=seed+r)  # conductivities initialization
-        # forcing = csc_matrix(forcing0.transpose())
-        # --------------------------------------------------------------------------------
+from src.tools import (
+    is_synthetic,
+    assert_mass_conservation,
+    assert_j_decrease,
+    print_verbose_params,
+)
 
 
-        tdens = tdens_0.copy()
-        td_mat = diags(tdens.astype(float), 0)   # matrix M
-        
-        stiff = inc_mat * td_mat * inv_len_mat * inc_transpose  # B diag[mu] diag[1/l_e] B^T
-        stiff_relax = stiff + relax_linsys * identity(nnode)     # avoid zero kernel
-        pot = spsolve(stiff_relax, forcing).reshape((nnode,ncomm))      # pressure
+def fit(
+    G: nx.Graph,
+    Ns: np.ndarray,
+    betas: np.ndarray,
+    delta: float,
+    w: np.ndarray,
+    mu: np.ndarray,
+    S: np.ndarray,
+    relax: float,
+    seedmu: int,
+    T: int,
+    epsJ: float,
+    epsmu: float,
+    topol: str,
+    verbose: bool,
+    verbosetimestep: int,
+):
+    """
+    Update conductivities.
 
-        # --------------------------------------------------------------------------------
-        # Run dynamics
-        convergence_achieved = False
-        cost_update = 0
-        cost_update_inter = 0
-        cost_list = []
-        time_iteration = 0
+    Parameters:
+     - G: Network.
+     - Ns: Number of nodes in each layer.
+     - betas: Betas in each layer.
+     - delta: Discrete time step.
+     - w: Weights.
+     - mu: Conductivities/capacities.
+     - S: Mass matrix.
+     - relax: Relaxation of Laplacian pseudoinverse.
+     - T: Stopping time.
+     - epsJ: convergence threshold J.
+     - epsmu: convergence threshold mu.
+     - topol: topology of network.
+     - seedmu: Seed for random noise initialization of conductivities.
+     - verbose: Verbose flag for additional output.
+     - verbosetimestep: Frequency when to print algorithm metadata.
+    """
 
-        fmax = forcing0.max() 
+    N, B, num_layers = get_network_variables(G, Ns)
+    if is_synthetic(topol):
+        beta_index = get_beta_index(G, num_layers)
+    else:
+        beta_index = get_beta_index_real(G)
 
-        while not convergence_achieved and time_iteration < tot_time:
+    betas_with_intelayer = np.array(list(betas) + [1])
 
-            time_iteration += 1
+    # Initialization.
+    it = 0
+    conv = False
+    conv_unstable = False
+    unstable_result = False
+    Jstack = list()
+    Jsp_dyn_stack = list()
+    mustack = list()
+    Fstack = list()
+    results = dict()
 
-            # update tdens-pot system
-            tdens_old = tdens.copy()
-            pot_old = pot.copy()
+    p = get_potential(N, mu, w, S, B, relax, seedmu)
+    J, F, Fnorm = get_ot_cost_and_flux(betas_with_intelayer, beta_index, mu, w, p, B)
+    Jsp_dyn = get_sp_cost(F, w)
 
-            # equations update
-            tdens, pot, grad, info = update(tdens,  pot, weight, inc_mat, inc_transpose, inv_len_mat, forcing, time_step, pflux, relax_linsys, nnode)
-            
-            # singular stiffness matrix
-            if info != 0:
-                tdens = tdens_old + prng.rand(*tdens.shape) * np.mean(tdens_old)/1000.
-                pot = pot_old + prng.rand(*pot.shape) * np.mean(pot_old)/1000. 
+    Jstack.append(J)
+    Jsp_dyn_stack.append(Jsp_dyn)
+    mustack.append(mu)
+    Fstack.append(F)
 
-            # 1) convergence with conductivities
-            # var_tdens = max(np.abs(tdens - tdens_old))/time_step
-            # print(time_iteration, var_tdens)
-            if verbose > 1 :
-                print('==========')
-            
-            # 2) an alternative convergence criteria: using total cost and maximum variation of conductivities
-            var_tdens = max(np.abs(tdens - tdens_old))/time_step 
-            
-            #var_tdens_inter = ([ max(np.abs(tdens_inter[i] - tdens_old_inter[i]))/time_step for i in range(nnode) ] )
-            convergence_achieved, cost_update, abs_diff_cost,  flux_norm = cost_convergence(threshold_cost, cost_update, tdens, pot, inc_mat, inv_len_mat, length, weight, pflux,convergence_achieved, var_tdens)#, var_tdens_inter)
-            
-            if verbose > 1: 
-                # print(time_iteration, var_tdens/forcing.max(), abs_diff_cost)
+    # Update.
+    while it < T and conv is False and conv_unstable is False:
+        mu_new = update_mu(mu, Fnorm, delta, betas_with_intelayer, beta_index)
 
-                # print('\r','It=',it,'err=', abs_diff,'J-J_old=',abs_diff_cost,sep=' ', end='', flush=True)
-                print('\r','it=%3d, err/max_f=%5.2f, J_diff=%8.2e' % (time_iteration,var_tdens/fmax,abs_diff_cost),sep=' ', end=' ', flush=True)
-                time.sleep(0.05)
+        p = get_potential(N, mu_new, w, S, B, relax, seedmu)
+        J_new, F, Fnorm = get_ot_cost_and_flux(
+            betas_with_intelayer, beta_index, mu_new, w, p, B
+        )
+        Jsp_dyn = get_sp_cost(F, w)
+        dJ = compute_diff_cost(J_new, J, delta)
 
-            cost_list.append(cost_update)
+        conv = check_convergence(
+            it, verbose, verbosetimestep, conv, dJ, epsJ, mu_new, mu, epsmu, delta
+        )
 
-            if (var_tdens < tol_var_tdens):# or (var_tdens_inter < tol_var_tdens):
-                convergence_achieved = True
+        assert_mass_conservation(B, F, S)
+        # Add assertion for more stable results.
+        conv_unstable, unstable_result = assert_j_decrease(J, J_new)
 
-            elif time_iteration >= tot_time:
-                convergence_achieved = True
-                tdens = tdens_old.copy()
-                if verbose > 0 :
-                    print("ERROR: convergence dynamics not achieved, iteration time > maxit")
+        mu = mu_new
+        J = J_new
 
-        if convergence_achieved:
-            if verbose > 0 :
-                print('cost:',cost_update, ' - N_real:',r, '- Best cost', minCost)   
-            if cost_update < minCost:
-                minCost = cost_update
-                minCost_list = cost_list
-                tdens_best = tdens.copy()
-                pot_best = pot.copy()
-                flux_best = flux_norm.copy()
+        Jstack.append(J)
+        Jsp_dyn_stack.append(Jsp_dyn)
+        mustack.append(mu)
+        Fstack.append(F)
 
+        it += 1
+
+    results["mu"] = mu
+    results["F_dyn"] = F
+    results["J_dyn"] = J
+    results["J_sp_dyn"] = Jsp_dyn
+    results["unstable_result"] = unstable_result
+
+    return results
+
+
+def get_network_variables(G: nx.Graph, Ns: np.ndarray):
+    """
+    Compute useful variables from network.
+
+    Parameters:
+     - G: Network.
+     - Ns: Number of nodes in each layer.
+    """
+
+    N = G.number_of_nodes()
+    B = csr_matrix(
+        nx.incidence_matrix(G, nodelist=list(range(G.number_of_nodes())), oriented=True)
+    )
+    num_layers = len(Ns)
+
+    return N, B, num_layers
+
+
+def get_beta_index(G: nx.Graph, num_layers: int):
+    """
+    Find index of beta for each edge.
+
+    Parameters:
+     - G: Network.
+     - num_layers: Number of layers.
+    """
+
+    beta_index = list()
+    for edge in G.edges():
+        layeri = G.nodes[edge[0]]["original_label"][1]
+        layerj = G.nodes[edge[1]]["original_label"][1]
+        if layeri == layerj:
+            beta_index.append(layeri)
         else:
-            print("ERROR: convergence dynamics not achieved")
+            beta_index.append(num_layers)
 
-    if plot_cost:
-        plot_J(minCost_list, int_ticks=True)
-
-    return tdens_best, pot_best, flux_best, minCost, minCost_list
-
-##*********************************************
-
-def update(tdens,  pot,  weight,  inc_mat,  inc_transpose, inv_len_mat, forcing,time_step, pflux, relax_linsys, nnode):
-    """dynamics update"""
-
-    t = 1
-    ctr = 1 / (1 + math.exp((t - 250)/50) )
-
-    nedge = tdens.shape[0]
-    nnode, ncomm = pot.shape
-    
-    # weight = [ np.sum(weight[l]) for l in range(L)]
-    weight = 1.
-    grad = inv_len_mat * inc_transpose * pot   # discrete gradient 
-    if isinstance(grad,(np.ndarray)):
-        rhs_ode = ((tdens**pflux) * ((grad**2).sum(axis=1)) / (weight**2)) - tdens 
-    else:
-        rhs_ode = ((tdens**pflux) * ((grad.power(2)).sum(axis=1)) / (weight**2)) - tdens 
-    rhs_ode = rhs_ode.reshape(tdens.shape)
-
-    # update conductivity
-    if rhs_ode.ndim > 1:
-        tdens = tdens + time_step * np.ravel(rhs_ode[:,0])
-        td_mat = diags(tdens.astype(float), 0) 
-    else:
-        tdens = tdens + time_step * rhs_ode
-        td_mat = diags(tdens.astype(float), 0) 
-    
-
-    # update stiffness matrix
-    stiff = inc_mat * td_mat * inv_len_mat * inc_transpose
-    
-    # spsolve
-    stiff_relax = stiff + relax_linsys * identity(nnode) # avoid zero kernel
-    # update potential
-    pot = spsolve(stiff_relax, forcing).reshape((nnode,ncomm))  # pressure
-    if np.any(np.isnan(pot)):# or np.any(np.isnan(pot_ctr)): # or np.any(pot != pot)
-        info = -1
-        pass
-    else:
-        info = 0
-
-    return tdens, pot, grad, info
-
-def cost_convergence(threshold_cost, cost,  tdens,  pot, inc_mat, inv_len_mat,length,weight, pflux, convergence_achieved, var_tdens):#, var_tdens_inter):
-    """computing convergence using total cost: setting a high value for maximum conductivity variability"""
-
-    L = len(pot)
-    nnode = pot[0].shape[0]
-
-    td_mat = np.diag(tdens.astype(float))
-    
-    flux_mat = np.matmul(td_mat * inv_len_mat * np.transpose(inc_mat), pot) 
-    flux_norm = np.linalg.norm(flux_mat, axis=1) 
-
-    cost_update = np.sum(weight * length * (flux_norm**(2*(2-pflux)/(3-pflux)))) 
-  
-    abs_diff_cost = abs(cost_update - cost)
-    
-    convergence_achieved = bool(convergence_achieved)
-    if min(pflux) > 1.40:
-        if abs_diff_cost < threshold_cost :
-            convergence_achieved = True
-    else: 
-        if abs_diff_cost < threshold_cost and var_tdens < 1:
-            convergence_achieved  = True
-
-    return convergence_achieved, cost_update, abs_diff_cost, flux_norm
-
-def abs_trimming_dyn(g, opttdens, optpot, length, output_path=None, tau=None):
-    """obtaining the trimmed graph using an absolute threshold"""
-
-    print("trimming dynamics graph...\n")
-
-    nnode = len(g.nodes())
-
-    #nnode_inter = len(g_inter.nodes())
-    
-    inc_mat = csr_matrix(nx.incidence_matrix(g, nodelist=list(range(nnode)), oriented=True))    # delta
-    inv_len_mat = diags(1/length, 0)    # diag[1/l_e]
-
-    mu_mat = np.diag(opttdens) 
-    
-    flux_mat = np.matmul(mu_mat* inv_len_mat * np.transpose(inc_mat), optpot) 
-    
-    flux_norm = np.linalg.norm(flux_mat, axis=1) 
-
-    if tau is None:
-        tau = np.percentile(flux_norm,20)
-    
-    edges_list = list(g.edges()) 
-
-    g_trimmed = copy.deepcopy(g) 
-    
-    g_final = copy.deepcopy(g) 
-
-    index_to_remove = [] 
-
-    for i in range(len(flux_norm)):
-        g_trimmed.remove_edge(edges_list[i][0], edges_list[i][1])
-        if flux_norm[i] < tau:
-            index_to_remove.append(i)
-            # iteratively trim the edges
-            node_1 = edges_list[i][0]
-            node_2 = edges_list[i][1]
-            g_final.remove_edge(node_1, node_2)
-                
-    opttdens_final = np.delete(opttdens, index_to_remove) 
-
-    flux_norm_final = np.delete(flux_norm, index_to_remove) 
-    
-    length_final = np.delete(length, index_to_remove) 
-
-    # dumping for graph visualization
-    if output_path is not None:
-        pickle.dump(np.array(index_to_remove), open(output_path + "index_to_remove_dyn.pkl", "wb"))
-        pickle.dump(index_to_remove_inter, open(output_path + "index_to_remove_dyn_inter.pkl", "wb"))
-
-    return g_final,  opttdens_final, flux_norm_final, length_final
+    return beta_index
 
 
-def incidence_matrix_from_sparse_adjacency(A,oriented = True,weight = None):
-    assert sparse.issparse(A)
-    # A = A.tocoo() # too handle easily the inidices
-    subs_nz = A.nonzero()
-    N,E = A.shape[0],subs_nz[0].shape[0]
-    B = sparse.lil_matrix((N, E))
-    for e in range(E):
-        u,v = subs_nz[0][e],subs_nz[1][e]
-        if weight is None:
-            w = 1
-        else:
-            w = A.data[e]
-        if oriented == True:
-            if u < v:
-                B[u,e] = - w
-                B[v,e] = w
-            # else:
-            #     B[u,e] = w
-            #     B[v,e] = - w
-        else:
-            B[u,e] = w
-            B[v,e] = w
-    return B.asformat("csr")
+def get_beta_index_real(G: nx.Graph):
+    """
+    Find index of beta for each edge.
 
-def extract_inter_incidence_matrix(A_inter,oriented = True,weight = None):
-    '''
-    If you want to calculate for the whole list
-    '''
-    N = len(A_inter)
+    - G: Network.
+    """
 
-    B = []
-    for i in range(N):
-        B.append(incidence_matrix_from_sparse_adjacency(A[i],oriented = oriented,weight = weight))
-    
-    return B
+    beta_index = list()
+    for edge in G.edges():
+        edge_label = G.edges[edge]["label"]
+        if edge_label == "car":
+            beta_index.append(0)
+        if edge_label == "bike":
+            beta_index.append(1)
+        if edge_label == "inter":
+            beta_index.append(2)
 
-def plot_J(values, indices = None, k_i = 5, figsize=(7, 3), int_ticks=False, xlab='Iterations'):
+    return beta_index
 
-    fig, ax = plt.subplots(1,1, figsize=figsize)
-    #print('\n\nL: \n\n',values[k_i:])
 
-    if indices is None:
-        ax.plot(values[k_i:])
-    else:
-        ax.plot(indices[k_i:], values[k_i:])
-    ax.set_xlabel(xlab)
-    ax.set_ylabel('J')
-    if int_ticks:
-        ax.xaxis.set_major_locator(MaxNLocator(integer=True))
-    ax.grid()
+def get_potential(
+    N: int,
+    mu: np.ndarray,
+    w: np.ndarray,
+    S: np.ndarray,
+    B: csr_matrix,
+    relax: float,
+    seedmu: int,
+):
+    """
+    Calculate the potential function.
 
-    plt.tight_layout()
-    plt.show()
+    Parameters:
+     - N: Number of nodes.
+     - mu: Conductivities/capacities.
+     - w: Weights.
+     - S: Mass matrix.
+     - B: Incidence matrix.
+     - relax: Relaxation of Laplacian pseudoinverse.
+     - seedmu: Seed for random noise initialization of conductivities.
+    """
 
+    np.random.seed(seed=seedmu)
+
+    L = B * diags(mu / w) * B.T
+    relax_noise = np.random.uniform(low=0.0, high=1.0)
+    L_relax = L + relax * relax_noise * identity(N)
+
+    p = spsolve(L_relax, S)
+
+    return p
+
+
+def get_ot_cost_and_flux(
+    betas_with_intelayer: np.ndarray,
+    beta_index: list,
+    mu: np.ndarray,
+    w: np.ndarray,
+    p: np.ndarray,
+    B: csr_matrix,
+):
+    """
+    Compute J and F.
+
+    Parameters:
+     - betas_with_intelayer: Beta values with inter-layer weights.
+     - beta_index: Index of beta for each edge.
+     - mu: Conductivities/capacities.
+     - w: Weights.
+     - p: Potential.
+     - B: Incidence matrix.
+    """
+
+    F = csr_matrix.dot((diags(mu / w) * B.T), p)
+    Fnorm = np.linalg.norm(F, axis=1, ord=2)
+
+    gamma_exp = (
+        2
+        * (2 - betas_with_intelayer[beta_index])
+        / (3 - betas_with_intelayer[beta_index])
+    )
+
+    J = np.dot(w, (Fnorm**gamma_exp))
+
+    return J, F, Fnorm
+
+
+def update_mu(
+    mu: np.ndarray,
+    Fnorm: np.ndarray,
+    delta: float,
+    betas_with_intelayer: np.ndarray,
+    beta_index: list,
+):
+    """
+    Update conductivities.
+
+    Parameters:
+     - mu: Initial conductivities/capacities.
+     - Fnorm: Norm of the flux.
+     - delta: Discrete time step.
+     - betas_with_intelayer: Beta values with inter-layer weights.
+     - beta_index: Index of beta for each edge.
+    """
+
+    beta_exp = betas_with_intelayer[beta_index] - 2
+    rhs = mu**beta_exp * Fnorm**2 - mu
+    mu = mu + delta * rhs
+
+    return mu
+
+
+def compute_diff_cost(
+    cost_new: float,
+    cost: float,
+    delta: float,
+):
+    """
+    Compute difference of J between two consecutive time steps.
+
+    Parameters:
+     - cost_new: New cost value.
+     - cost: Current cost value.
+     - delta: Discrete time step.
+    """
+
+    return abs(cost - cost_new) / delta
+
+
+def check_convergence(
+    it: int,
+    verbose: bool,
+    verbosetimestep: int,
+    conv: bool,
+    dJ: float,
+    epsJ: float,
+    mu_new: np.ndarray,
+    mu: np.ndarray,
+    epsmu: float,
+    delta: float,
+):
+    """
+    Check convergence of MultiOT.
+
+    Parameters:
+     - it: Current iteration.
+     - verbose: Verbose flag for additional output.
+     - verbosetimestep: Frequency when to print algorithm metadata.
+     - conv: Flag indicating if convergence is achieved.
+     - dJ: Difference in cost (J) between consecutive time steps.
+     - epsJ: Convergence threshold for J.
+     - mu_new: Updated conductivities/capacities.
+     - mu: Current conductivities/capacities.
+     - epsmu: Convergence threshold for mu.
+     - delta: Discrete time step.
+    """
+
+    conv_J = False
+    conv_mu = False
+
+    if it >= 1:
+        if dJ < epsJ:
+            conv_J = True
+
+        dmu_max = np.max(abs(mu_new - mu)) / delta
+
+        if dmu_max < epsmu:
+            conv_mu = True
+
+        print_verbose_params(verbose, verbosetimestep, it, dmu_max, dJ)
+
+    if conv_mu is True and conv_J is True:
+        conv = True
+
+    return conv
+
+
+def get_sp_cost(F: np.ndarray, w: np.ndarray):
+    """
+    Compute 1-norm cost.
+
+    Parameters:
+     - F: Flux matrix.
+     - w: Weights.
+    """
+
+    Fnorm1 = np.linalg.norm(F, axis=1, ord=1)
+
+    return np.dot(w, Fnorm1)

@@ -134,7 +134,7 @@ The main parameters used by ```main.py``` to run the code are (together with the
 ### Copenhagen
 
 <p align="center" width=100pt>
-<img src ="./misc/fig2.pdf"><br>
+<img src ="./misc/fig2.png"><br>
 </p>
 
 

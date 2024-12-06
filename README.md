@@ -8,7 +8,7 @@ Python implementation of the MultiOT algorithm employed and developed in:
 
 - [1] Ibrahim, A.A., Lonardi, A., De Bacco, C. *[Optimal transport in multilayer networks](https://www.mdpi.com/1999-4893/14/7/189)*. Algorithms 2021, 14(7), 189 (2021).
 - [2] Ibrahim, A.A., Leite, D., De Bacco, C. *[Sustainable optimal transport in multilayer networks](https://doi.org/10.1103/PhysRevE.105.064302)*. Phys. Rev. E 105, 064302 (2022).
-- [3] Lonardi, A., Szell, M., De Bacco, C. *Cohesive urban bicycle infrastructure design through optimal transport routing in multilayer networks*. arXiv. (2024).
+- [3] Lonardi, A., Szell, M., De Bacco, C. *Cohesive urban bicycle infrastructure design through optimal transport routing in multilayer networks*. Journal of the Royal Society Interface.
 
 This is a an algorithm that uses Optimal Transport theory to extract optimal paths in multilayer networks. Such a task is carried out accordingly to the mathematical frameworks formulated in the works above.
 
